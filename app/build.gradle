@@ -39,6 +39,8 @@ android {
 }
 
 dependencies {
+    // ML Kit 과 androidx 가 서로 다른 Kotlin 버전을 끌고 와서 생기는 중복을 하나로 맞춤
+    implementation platform('org.jetbrains.kotlin:kotlin-bom:1.8.22')
     implementation 'androidx.core:core:1.13.1'
     // 영수증 글자 읽기: 폰 안에서 동작 (인터넷·비용 없음)
     implementation 'com.google.mlkit:text-recognition-korean:16.0.1'
