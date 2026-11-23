@@ -5,3 +5,4 @@ local.properties
 .idea/
 keystore/
 택시장부_서명키.zip
+KEYSTORE_B64.txt
