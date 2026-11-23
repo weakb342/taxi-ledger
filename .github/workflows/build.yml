@@ -24,23 +24,36 @@ jobs:
           gradle-version: '8.9'
 
       - name: 서명 키 준비
+        id: key
         env:
           KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
         run: |
-          if [ -z "$KEYSTORE_B64" ]; then echo "::error::KEYSTORE_B64 비밀값이 없어요"; exit 1; fi
-          mkdir -p keystore
-          echo "$KEYSTORE_B64" | base64 -d > keystore/release.jks
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "::warning::KEYSTORE_B64 비밀값이 없어서 시험 빌드만 해요 (배포 안 함)"
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+          else
+            mkdir -p keystore
+            echo "$KEYSTORE_B64" | base64 -d > keystore/release.jks
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 시험 빌드 (서명 키 없음)
+        if: steps.key.outputs.signed != 'true'
+        run: gradle :app:assembleDebug --no-daemon
 
       - name: APK 빌드
+        if: steps.key.outputs.signed == 'true'
         env:
           VERSION_CODE: ${{ github.run_number }}
           KS_PASS: ${{ secrets.KS_PASS }}
         run: gradle :app:assembleRelease --no-daemon
 
       - name: 파일 이름 정리
+        if: steps.key.outputs.signed == 'true'
         run: cp app/build/outputs/apk/release/app-release.apk taxi-ledger.apk
 
       - name: 릴리스에 올리기
+        if: steps.key.outputs.signed == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.${{ github.run_number }}
