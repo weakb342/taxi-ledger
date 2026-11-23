@@ -3,6 +3,10 @@ package kr.taxiledger;
 import android.app.Activity;
 import android.content.ContentValues;
 import android.content.Intent;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Matrix;
+import android.media.ExifInterface;
 import android.graphics.Rect;
 import android.net.Uri;
 import android.os.Build;
@@ -43,6 +47,7 @@ public class MainActivity extends Activity {
     private static final int REQ_CAMERA = 1;
     private WebView web;
     private Uri photoUri;
+    private File photoFile;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -87,6 +92,8 @@ public class MainActivity extends Activity {
     private void startCamera() {
         try {
             File f = new File(getCacheDir(), "receipt.jpg");
+            if (f.exists()) f.delete();
+            photoFile = f;
             photoUri = FileProvider.getUriForFile(this, getPackageName() + ".files", f);
             Intent i = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
             i.putExtra(MediaStore.EXTRA_OUTPUT, photoUri);
@@ -104,18 +111,49 @@ public class MainActivity extends Activity {
         if (resultCode != RESULT_OK) { js("Ledger.onScan({error:'cancel'})"); return; }
         js("Ledger.onScanStart()");
         try {
-            InputImage img = InputImage.fromFilePath(this, photoUri);
+            if (photoFile == null || !photoFile.exists() || photoFile.length() == 0) { js("Ledger.onScan({error:'nophoto'})"); return; }
+            final Bitmap bmp = loadUpright(photoFile);
+            if (bmp == null) { js("Ledger.onScan({error:'nophoto'})"); return; }
+            InputImage img = InputImage.fromBitmap(bmp, 0);
             TextRecognizer rec = TextRecognition.getClient(new KoreanTextRecognizerOptions.Builder().build());
             rec.process(img)
-                .addOnSuccessListener(text -> js("Ledger.onScan(" + toJson(text) + ")"))
+                .addOnSuccessListener(text -> js("Ledger.onScan(" + toJson(text, bmp.getWidth(), bmp.getHeight()) + ")"))
                 .addOnFailureListener(e -> js("Ledger.onScan({error:'ocr'})"));
         } catch (Exception e) {
             js("Ledger.onScan({error:'ocr'})");
         }
     }
 
+    /**
+     * 갤럭시 카메라는 사진을 돌려 저장하지 않고 '방향 표시'만 붙인다.
+     * 그 표시대로 바로 세우고, 너무 큰 사진은 2000px 정도로 줄여서 글자 인식에 넘긴다.
+     */
+    private Bitmap loadUpright(File f) throws Exception {
+        BitmapFactory.Options o = new BitmapFactory.Options();
+        o.inJustDecodeBounds = true;
+        BitmapFactory.decodeFile(f.getPath(), o);
+        int max = Math.max(o.outWidth, o.outHeight), sample = 1;
+        while (max / (sample * 2) >= 2000) sample *= 2;
+        BitmapFactory.Options o2 = new BitmapFactory.Options();
+        o2.inSampleSize = sample;
+        Bitmap b = BitmapFactory.decodeFile(f.getPath(), o2);
+        if (b == null) return null;
+        int rot = 0;
+        switch (new ExifInterface(f.getPath()).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)) {
+            case ExifInterface.ORIENTATION_ROTATE_90: rot = 90; break;
+            case ExifInterface.ORIENTATION_ROTATE_180: rot = 180; break;
+            case ExifInterface.ORIENTATION_ROTATE_270: rot = 270; break;
+        }
+        if (rot != 0) {
+            Matrix m = new Matrix();
+            m.postRotate(rot);
+            b = Bitmap.createBitmap(b, 0, 0, b.getWidth(), b.getHeight(), m, true);
+        }
+        return b;
+    }
+
     /** 읽은 글자를 줄 단위로, 위치와 함께 넘긴다. 해석은 index.html 의 parseReceipt 가 한다. */
-    private String toJson(Text text) {
+    private String toJson(Text text, int w, int h) {
         JSONArray lines = new JSONArray();
         try {
             for (Text.TextBlock b : text.getTextBlocks()) {
@@ -129,6 +167,8 @@ public class MainActivity extends Activity {
             }
             JSONObject out = new JSONObject();
             out.put("lines", lines);
+            out.put("w", w);
+            out.put("h", h);
             return out.toString();
         } catch (Exception e) {
             return "{\"error\":\"ocr\"}";
