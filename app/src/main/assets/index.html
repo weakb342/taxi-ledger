@@ -66,6 +66,7 @@ header.top h1 { font-size: 1.15rem; margin: 0; font-weight: 700; }
 
 .ocr { white-space: pre-wrap; word-break: break-all; font-size: 0.8rem; margin: 8px 0 0; max-height: 50vh; overflow: auto; color: var(--ink); }
 details.msg summary { cursor: pointer; font-weight: 600; }
+.msg.plain { color: var(--muted); padding: 4px 12px; }
 .photo { display: flex; gap: 12px; align-items: center; width: 100%; text-align: left; background: transparent; border: 2px dashed var(--line); border-radius: 16px; padding: 12px 14px; color: var(--muted); font-size: 0.9rem; cursor: default; }
 .photo.live { border: 2px solid var(--accent); background: var(--accent-soft); color: var(--ink); cursor: pointer; min-height: 76px; }
 .photo.live svg { color: var(--accent); }
@@ -278,7 +279,7 @@ var Ledger = (function () {
     if (view === 'day' && S.scanNote && S.scanNote.date === S.date.day) issues.msgs.unshift(['info', S.scanNote.text]);
     var dbg = '';
     if (view === 'day' && S.scanDebug) {
-      dbg = '<details class="msg info"><summary>사진에서 읽은 글자 보기 (' + S.scanDebug.lines.length + '줄)</summary><pre class="ocr">' +
+      dbg = '<details class="msg ' + (S.scanDebug.ok ? 'plain' : 'info') + '"><summary>사진에서 읽은 글자 보기 (' + S.scanDebug.lines.length + '줄)</summary><pre class="ocr">' +
         (S.scanDebug.lines.length ? S.scanDebug.lines.map(esc).join('\n') : '(읽은 글자 없음)') + '\n\n사진 크기 ' + S.scanDebug.size + '</pre></details>';
     }
     $('#' + view + 'Msg').innerHTML = issues.msgs.map(function (m) { return '<div class="msg ' + m[0] + '">' + m[1] + '</div>'; }).join('') + dbg;
@@ -334,7 +335,7 @@ var Ledger = (function () {
     if (issues.msgs.some(function (m) { return m[0] === 'warn'; }) && S.armed !== view) { S.armed = view; render(); return; }
     var d = DB.days[s] || {};
     fields.forEach(function (f) { var v = S.buf[f.k]; d[f.k] = (v === '' || v === '.') ? null : +v; });
-    DB.days[s] = d; persist(); S.armed = null; if (view === 'day') S.scanNote = null;
+    DB.days[s] = d; persist(); S.armed = null; if (view === 'day') { S.scanNote = null; S.scanDebug = null; }
     var parts = view === 'day'
       ? [d.income != null ? fmt(d.income) + '원' : null, d.odo != null ? '누적 ' + fmt(d.odo) + 'km' : null].filter(Boolean).join(', ')
       : fmtK(d.kwh || 0) + 'kWh';
@@ -481,6 +482,23 @@ var Ledger = (function () {
       if (amount != null) how = 'label';
     }
     var all = L.map(function (l) { return l.c; }).join('\n');
+    // 결제수단별 소계 (교통카드 · 신용카드 · 카카오T · 우버 ...): 보통 글씨라 잘 읽힘 → 검산용
+    var CATS = [['교통카드', /교[통틍]카[드도]/], ['신용카드', /신[용응]카[드도]/], ['카카오T', /카카[오모]/], ['우버', /우[버비]/], ['티머니', /티머니(?!비즈)/], ['현금', /현금/]];
+    var parts = [];
+    CATS.forEach(function (cat) {
+      var lab = L.filter(function (l) { return cat[1].test(l.c) && !/bizpay|비즈페이|1644/i.test(l.c); })[0];
+      if (!lab) return;
+      var v = maxOf(moneys(lab.c.replace(cat[1], ' ')));
+      if (v == null) {
+        var cy = lab.y + lab.h / 2, near = [];
+        L.forEach(function (l) {
+          if (l !== lab && Math.abs((l.y + l.h / 2) - cy) < Math.max(lab.h, l.h) * 0.8 && l.x > lab.x) near = near.concat(moneys(l.c));
+        });
+        v = maxOf(near);
+      }
+      if (v != null) parts.push([cat[0], v]);
+    });
+    var partSum = parts.reduce(function (a, p) { return a + p[1]; }, 0);
     // 2) 못 찾으면: 정산표(상세거래내역)라면 총합계가 항상 가장 큰 금액
     var isSummary = /집[계게]|상세|교통카드|신용카드|카카오|우버|출력일/.test(all);
     if (amount == null && isSummary) {
@@ -489,6 +507,8 @@ var Ledger = (function () {
       amount = maxOf(allM);
       if (amount != null) how = 'largest';
     }
+    if (amount == null && parts.length >= 2) { amount = partSum; how = 'sum'; }
+    var verified = amount != null && parts.length >= 2 && partSum === amount;
     var year = now.getFullYear(), date = null;
     var pm = all.match(/(20\d{2})[\/.\-](\d{1,2})[\/.\-](\d{1,2})/);
     var pr = all.match(/출[력럭]일시:?(20\d{2})[\/.\-](\d{1,2})[\/.\-](\d{1,2})(\d{1,2}):(\d{2})/);
@@ -503,7 +523,7 @@ var Ledger = (function () {
       if (d.getHours() < 6) d.setDate(d.getDate() - 1);
       date = ymd(d);
     }
-    return { amount: amount, date: date, how: how };
+    return { amount: amount, date: date, how: how, verified: verified, parts: parts };
   }
   function scanUI(busy) {
     S.scanning = busy;
@@ -526,13 +546,16 @@ var Ledger = (function () {
       toast('총합계를 찾지 못했어요. 영수증 윗부분(집계 시간 ~ 총합계)이 화면에 크게 나오게 다시 찍어 주세요.');
       return;
     }
-    S.scanDebug = null;
+    S.scanDebug = { date: S.date.day, lines: (res.lines || []).map(function (l) { return l.t; }), size: (res.w || '?') + '×' + (res.h || '?'), ok: true };
     if (r.date && r.date <= TODAY && r.date !== S.date.day) { S.date.day = r.date; loadBuf('day'); }
     S.buf.income = String(r.amount);
     S.active.day = 'odo';
-    S.scanNote = { date: S.date.day, text: r.how === 'largest'
-      ? '총합계 글자는 못 읽어서, 영수증에서 가장 큰 금액 ' + fmt(r.amount) + '원을 넣었어요. 총합계와 같은지 꼭 확인하세요.'
-      : '영수증에서 ' + (r.date ? niceDate(r.date) + ', ' : '') + fmt(r.amount) + '원을 읽었어요. 맞으면 나머지 칸도 채우고 저장하세요.' };
+    var head = '영수증에서 ' + (r.date ? niceDate(r.date) + ', ' : '') + '<b>' + fmt(r.amount) + '원</b>을 읽었어요.';
+    var text;
+    if (r.verified) text = head + ' 결제수단별 금액(' + r.parts.map(function (p) { return p[0] + ' ' + fmt(p[1]); }).join(' + ') + ')을 더한 값과 맞아요 ✓';
+    else if (r.how === 'label') text = head + ' 맞으면 나머지 칸도 채우고 저장하세요.';
+    else text = head + ' 총합계와 같은지 한 번 확인해 주세요.';
+    S.scanNote = { date: S.date.day, text: text };
     S.tab === 'day' ? render() : setTab('day');
   }
 
