@@ -1,0 +1,45 @@
+plugins {
+    id 'com.android.application'
+}
+
+def buildNo = (System.getenv('VERSION_CODE') ?: '1') as int
+
+android {
+    namespace 'kr.taxiledger'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'kr.taxiledger'
+        minSdk 26
+        targetSdk 34
+        versionCode buildNo
+        versionName "1.0.${buildNo}"
+    }
+
+    signingConfigs {
+        release {
+            storeFile rootProject.file('keystore/release.jks')
+            storePassword System.getenv('KS_PASS')
+            keyAlias 'taxiledger'
+            keyPassword System.getenv('KS_PASS')
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation 'androidx.core:core:1.13.1'
+    // 영수증 글자 읽기: 폰 안에서 동작 (인터넷·비용 없음)
+    implementation 'com.google.mlkit:text-recognition-korean:16.0.1'
+}

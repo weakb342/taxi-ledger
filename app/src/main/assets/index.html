@@ -1,0 +1,553 @@
+<title>개인택시 장부</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;600;700&display=swap">
+<style>
+/* 한 손 조작용 단일 열: 위에 날짜, 가운데 입력칸, 아래 큰 키패드, 맨 아래 탭 */
+:root {
+  --bg: #eef2f0; --surface: #ffffff; --ink: #12201b; --muted: #56675f; --line: #d3ddd8;
+  --accent: #0d7356; --accent-ink: #ffffff; --accent-soft: #dcefe7;
+  --amber: #9a6500; --amber-soft: #fbefd5; --danger: #b3261e; --danger-soft: #fbe3e1;
+  --font: "IBM Plex Sans KR", "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0e1412; --surface: #17201d; --ink: #e6eeea; --muted: #94a59d; --line: #2a3733;
+  --accent: #3fc79c; --accent-ink: #052119; --accent-soft: #183a2f;
+  --amber: #f0b440; --amber-soft: #3a2e14; --danger: #ff8a80; --danger-soft: #3d1c1a; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #0e1412; --surface: #17201d; --ink: #e6eeea; --muted: #94a59d; --line: #2a3733;
+  --accent: #3fc79c; --accent-ink: #052119; --accent-soft: #183a2f;
+  --amber: #f0b440; --amber-soft: #3a2e14; --danger: #ff8a80; --danger-soft: #3d1c1a; color-scheme: dark; }
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font); font-size: 18px; line-height: 1.45; -webkit-tap-highlight-color: transparent; }
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.num { font-variant-numeric: tabular-nums; }
+
+.wrap {
+  max-width: 520px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 12px calc(96px + env(safe-area-inset-bottom, 0px));
+  display: flex; flex-direction: column; gap: 12px;
+}
+section { display: flex; flex-direction: column; gap: 12px; }
+header.top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+header.top h1 { font-size: 1.15rem; margin: 0; font-weight: 700; }
+.chip { font-size: 0.75rem; padding: 3px 10px; border-radius: 999px; background: var(--amber-soft); color: var(--amber); font-weight: 600; white-space: nowrap; }
+
+.daterow { display: grid; grid-template-columns: 56px 1fr 56px; align-items: center; gap: 8px; }
+.daterow button.arrow { height: 56px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); font-size: 1.4rem; }
+.daterow button.arrow:disabled { opacity: 0.35; }
+.datebox { text-align: center; }
+.datebox .d { font-size: 1.25rem; font-weight: 700; }
+.datebox .sub { font-size: 0.85rem; color: var(--muted); }
+
+/* 입력칸 목록 */
+.fields { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; overflow: hidden; }
+.frow { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; width: 100%; text-align: left; border: 0; border-top: 1px solid var(--line); background: transparent; padding: 12px 16px; min-height: 68px; }
+.frow:first-child { border-top: 0; }
+.frow .lbl { font-weight: 600; font-size: 1rem; }
+.frow .lbl small { display: block; font-weight: 400; color: var(--muted); font-size: 0.8rem; }
+.frow .val { font-size: 1.7rem; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+.frow .val .u { font-size: 0.95rem; color: var(--muted); margin-left: 4px; font-weight: 600; }
+.frow .val .ph { color: var(--line); }
+.frow.on { background: var(--accent-soft); box-shadow: inset 4px 0 0 var(--accent); }
+.frow.warn .val { color: var(--danger); }
+.big .frow { min-height: 96px; }
+.big .frow .val { font-size: 2.6rem; }
+
+.msg { font-size: 0.9rem; border-radius: 12px; padding: 10px 12px; }
+.msg.warn { background: var(--danger-soft); color: var(--danger); font-weight: 600; }
+.msg.info { background: var(--amber-soft); color: var(--amber); }
+
+.photo { display: flex; gap: 12px; align-items: center; width: 100%; text-align: left; background: transparent; border: 2px dashed var(--line); border-radius: 16px; padding: 12px 14px; color: var(--muted); font-size: 0.9rem; cursor: default; }
+.photo.live { border: 2px solid var(--accent); background: var(--accent-soft); color: var(--ink); cursor: pointer; min-height: 76px; }
+.photo.live svg { color: var(--accent); }
+.photo svg { flex: none; }
+.photo b { color: var(--ink); display: block; font-size: 1rem; }
+
+.keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.keypad button { height: 62px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); font-size: 1.6rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.keypad button:active { background: var(--accent-soft); }
+.keypad button.fn { font-size: 1.1rem; color: var(--muted); }
+.keypad button.blank { visibility: hidden; }
+
+.save { height: 64px; border-radius: 16px; border: 0; background: var(--accent); color: var(--accent-ink); font-size: 1.25rem; font-weight: 700; }
+.save:disabled { opacity: 0.45; }
+.save.danger { background: var(--danger); color: var(--surface); }
+
+.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.tile { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 12px 14px; min-width: 0; }
+.tile .k { font-size: 0.8rem; color: var(--muted); font-weight: 600; }
+.tile .v { font-size: 1.4rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.tile .v small { font-size: 0.8rem; color: var(--muted); font-weight: 600; margin-left: 2px; }
+.tile.g .v { color: var(--accent); }
+.bill { display: grid; grid-template-columns: 1fr 150px; gap: 10px; align-items: center; }
+.bill label { font-size: 0.9rem; color: var(--muted); }
+.bill input { height: 52px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); padding: 0 12px; text-align: right; width: 100%; }
+
+.tablebox { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; }
+table { width: 100%; border-collapse: collapse; font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+th, td { padding: 8px 8px; text-align: right; border-top: 1px solid var(--line); white-space: nowrap; }
+th { font-size: 0.75rem; color: var(--muted); font-weight: 600; border-top: 0; }
+th:first-child, td:first-child { text-align: left; }
+tr.sel td { background: var(--accent-soft); }
+tr.bad td.bad { color: var(--danger); font-weight: 700; }
+tfoot td { font-weight: 700; border-top: 2px solid var(--ink); }
+tbody tr { cursor: pointer; }
+
+.btn2 { height: 54px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); font-weight: 600; }
+.hint { font-size: 0.85rem; color: var(--muted); }
+
+nav.tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; background: var(--surface); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom, 0px); padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
+nav.tabs .in { max-width: 520px; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); }
+nav.tabs button { height: 68px; border: 0; background: transparent; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 0.95rem; font-weight: 600; color: var(--muted); }
+nav.tabs button svg { width: 24px; height: 24px; }
+nav.tabs button[aria-selected="true"] { color: var(--accent); }
+
+.toast { position: fixed; left: 50%; transform: translateX(-50%); z-index: 9; bottom: calc(84px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--bg); padding: 12px 18px; border-radius: 14px; font-weight: 600; max-width: calc(100% - 32px); text-align: center; }
+@media (prefers-reduced-motion: no-preference) { .keypad button, .save { transition: transform .06s; } .keypad button:active, .save:active { transform: scale(0.97); } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <h1>개인택시 장부</h1>
+    <span class="chip" id="modeChip">미리보기 · 11월 기록 예시</span>
+  </header>
+
+  <!-- 영업 마감 -->
+  <section id="view-day">
+    <div class="daterow" id="dayDate"></div>
+    <button type="button" class="photo" id="scanBtn">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+      <span><b id="scanTitle">정산 영수증 찍기</b><span id="scanSub">설치용 앱에서는 영수증을 찍으면 총합계와 날짜가 자동으로 채워져요.</span></span>
+    </button>
+    <div class="fields" id="dayFields"></div>
+    <div id="dayMsg"></div>
+    <div class="keypad" id="dayPad"></div>
+    <button class="save" id="daySave">마감 저장</button>
+  </section>
+
+  <!-- 충전 -->
+  <section id="view-charge" hidden>
+    <div class="daterow" id="chargeDate"></div>
+    <div class="fields big" id="chargeFields"></div>
+    <div id="chargeMsg"></div>
+    <div class="keypad" id="chargePad"></div>
+    <button class="save" id="chargeSave">충전량 저장</button>
+  </section>
+
+  <!-- 월별 -->
+  <section id="view-month" hidden>
+    <div class="daterow">
+      <button class="arrow" id="mPrev" aria-label="이전 달">‹</button>
+      <div class="datebox"><div class="d" id="mLabel"></div><div class="sub" id="mSub"></div></div>
+      <button class="arrow" id="mNext" aria-label="다음 달">›</button>
+    </div>
+    <div class="tiles" id="tiles"></div>
+    <div class="bill">
+      <label for="billInput">이 달 전기요금 (고지서 금액)</label>
+      <input id="billInput" class="num" type="number" inputmode="numeric" placeholder="예: 99690">
+    </div>
+    <div id="monthWarn"></div>
+    <div class="tablebox"><table id="mTable"></table></div>
+    <span class="hint">줄을 누르면 그 날 기록을 고칠 수 있어요.</span>
+    <button class="btn2" id="xlsxBtn">올해 수입금내역서 엑셀 받기</button>
+    <span class="hint" id="exportHint"></span>
+  </section>
+</div>
+
+<nav class="tabs" role="tablist">
+  <div class="in">
+    <button role="tab" data-tab="day" aria-selected="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 2h12v20l-3-2-3 2-3-2-3 2z"/><path d="M9 7h6M9 11h6M9 15h3"/></svg>영업 마감
+    </button>
+    <button role="tab" data-tab="charge" aria-selected="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>충전
+    </button>
+    <button role="tab" data-tab="month" aria-selected="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg>월별 정리
+    </button>
+  </div>
+</nav>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+var Ledger = (function () {
+  var APP = typeof window.Android !== 'undefined';
+  var $ = function (s) { return document.querySelector(s); };
+  var DOW = ['일', '월', '화', '수', '목', '금', '토'];
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function ymd(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+  function parse(s) { var p = s.split('-'); return new Date(+p[0], +p[1] - 1, +p[2]); }
+  function addDays(s, n) { var d = parse(s); d.setDate(d.getDate() + n); return ymd(d); }
+  // 자정 넘어 마감해도 영업 시작한 날로: 새벽 6시 전이면 전날
+  function businessDay() { var d = new Date(); if (d.getHours() < 6) d.setDate(d.getDate() - 1); return ymd(d); }
+  var TODAY = businessDay();
+  function niceDate(s) { var d = parse(s); return (d.getMonth() + 1) + '월 ' + d.getDate() + '일 (' + DOW[d.getDay()] + ')'; }
+  function fmt(n) { return Math.round(n).toLocaleString('ko-KR'); }
+  function fmtK(n) { return (Math.round(n * 10) / 10).toLocaleString('ko-KR', { maximumFractionDigits: 1 }); }
+
+  // ---------- 저장 (미리보기: 이 기기 저장) ----------
+  var KEY = 'taxi-ledger-v2';
+  var DB = { days: {}, bills: {} };
+  function load() {
+    var d = null;
+    try { d = JSON.parse(localStorage.getItem(KEY)); } catch (e) {}
+    if (!(d && d.days) && APP) { try { d = JSON.parse(window.Android.restore() || 'null'); } catch (e) {} }
+    DB = (d && d.days) ? d : (APP ? { days: {}, bills: {} } : seed());
+    if (!DB.bills) DB.bills = {};
+  }
+  function persist() {
+    var json = JSON.stringify(DB);
+    try { localStorage.setItem(KEY, json); } catch (e) {}
+    if (APP) { try { window.Android.backup(json); } catch (e) {} }
+  }
+  function seed() {
+    // 아버님 2026년 11월 엑셀 기록 (1~18일)
+    var rows = []; // 공개 저장소에는 개인 기록을 넣지 않음
+    var days = {};
+    rows.forEach(function (r) { days['2026-11-' + pad(r[0])] = { income: r[1], totalKm: r[2], netKm: r[3], kwh: r[4], odo: r[5] }; });
+    return { days: days, bills: {} };
+  }
+  function day(s) { return DB.days[s] || {}; }
+  function prevOdo(s) {
+    var best = null;
+    Object.keys(DB.days).forEach(function (k) { if (k < s && DB.days[k].odo != null && (!best || k > best)) best = k; });
+    return best ? { date: best, odo: DB.days[best].odo } : null;
+  }
+  function nextOdo(s) {
+    var best = null;
+    Object.keys(DB.days).forEach(function (k) { if (k > s && DB.days[k].odo != null && (!best || k < best)) best = k; });
+    return best ? { date: best, odo: DB.days[best].odo } : null;
+  }
+
+  // ---------- 입력칸 정의 ----------
+  var DAY_FIELDS = [
+    { k: 'income', label: '총수입금', sub: '정산 영수증 맨 위 총합계', unit: '원', max: 8, extra: '000' },
+    { k: 'odo', label: '계기판 누적거리', sub: '자동차 계기판 ODO', unit: 'km', max: 7 },
+    { k: 'totalKm', label: '총주행거리', sub: '오늘 달린 거리', unit: 'km', max: 4 },
+    { k: 'netKm', label: '순주행거리', sub: '손님 태운 거리', unit: 'km', max: 4 }
+  ];
+  var CHARGE_FIELDS = [{ k: 'kwh', label: '충전량', sub: '충전기 화면 숫자', unit: 'kWh', max: 3, extra: '.' }];
+
+  var S = { tab: 'day', date: { day: TODAY, charge: TODAY }, buf: {}, active: { day: 'income', charge: 'kwh' }, month: TODAY.slice(0, 7), armed: null };
+
+  function loadBuf(view) {
+    var d = day(S.date[view]), fields = view === 'day' ? DAY_FIELDS : CHARGE_FIELDS;
+    fields.forEach(function (f) { S.buf[f.k] = d[f.k] != null ? String(d[f.k]) : ''; });
+    S.armed = null;
+  }
+
+  // ---------- 그리기 ----------
+  function dateRow(el, view) {
+    el.innerHTML = '<button class="arrow" aria-label="하루 전">‹</button><div class="datebox"><div class="d"></div><div class="sub"></div></div><button class="arrow" aria-label="하루 뒤">›</button>';
+    var b = el.querySelectorAll('button');
+    b[0].onclick = function () { S.date[view] = addDays(S.date[view], -1); loadBuf(view); render(); };
+    b[1].onclick = function () { if (S.date[view] < TODAY) { S.date[view] = addDays(S.date[view], 1); loadBuf(view); render(); } };
+  }
+  function renderDate(el, view) {
+    var s = S.date[view];
+    el.querySelector('.d').textContent = niceDate(s);
+    var has = Object.keys(day(s)).some(function (k) { return day(s)[k] != null; });
+    el.querySelector('.sub').textContent = (s === TODAY ? '오늘 영업' : s === addDays(TODAY, -1) ? '어제 영업' : '') + (has ? ' · 저장된 기록 있음' : '');
+    el.querySelectorAll('button')[1].disabled = s >= TODAY;
+  }
+
+  function valHTML(f) {
+    var v = S.buf[f.k];
+    if (v === '' || v == null) return '<span class="ph">0</span><span class="u">' + f.unit + '</span>';
+    var shown = f.k === 'kwh' ? v : fmt(+v);
+    return shown + '<span class="u">' + f.unit + '</span>';
+  }
+  function renderFields(view) {
+    var fields = view === 'day' ? DAY_FIELDS : CHARGE_FIELDS, box = $('#' + view + 'Fields');
+    var issues = check(view);
+    box.innerHTML = fields.map(function (f) {
+      var cls = 'frow' + (S.active[view] === f.k ? ' on' : '') + (issues.bad[f.k] ? ' warn' : '');
+      return '<button type="button" class="' + cls + '" data-k="' + f.k + '"><span class="lbl">' + f.label + '<small>' + f.sub + '</small></span><span class="val">' + valHTML(f) + '</span></button>';
+    }).join('');
+    box.querySelectorAll('.frow').forEach(function (b) { b.onclick = function () { S.active[view] = b.dataset.k; render(); }; });
+    if (view === 'day' && S.scanNote && S.scanNote.date === S.date.day) issues.msgs.unshift(['info', S.scanNote.text]);
+    $('#' + view + 'Msg').innerHTML = issues.msgs.map(function (m) { return '<div class="msg ' + m[0] + '">' + m[1] + '</div>'; }).join('');
+    var save = $('#' + view + 'Save');
+    var any = fields.some(function (f) { return S.buf[f.k] !== ''; });
+    save.disabled = !any;
+    save.className = 'save' + (S.armed === view ? ' danger' : '');
+    save.textContent = S.armed === view ? '그래도 저장' : (view === 'day' ? '마감 저장' : '충전량 저장');
+  }
+
+  // 잘못 입력 막기: 엑셀에서 실제로 있었던 실수 (누적거리 자릿수, 거꾸로 가는 누적거리)
+  function check(view) {
+    var bad = {}, msgs = [], s = S.date[view], b = S.buf;
+    if (view === 'day') {
+      var odo = b.odo !== '' ? +b.odo : null, p = prevOdo(s), n = nextOdo(s);
+      if (odo != null && p && odo < p.odo) { bad.odo = 1; msgs.push(['warn', '누적거리가 ' + niceDate(p.date) + ' 기록(' + fmt(p.odo) + 'km)보다 작아요.']); }
+      else if (odo != null && p && odo - p.odo > 2000) { bad.odo = 1; msgs.push(['warn', '누적거리가 ' + niceDate(p.date) + '보다 ' + fmt(odo - p.odo) + 'km나 늘었어요. 자릿수를 확인해 주세요.']); }
+      if (odo != null && n && odo > n.odo) { bad.odo = 1; msgs.push(['warn', '누적거리가 ' + niceDate(n.date) + ' 기록(' + fmt(n.odo) + 'km)보다 커요.']); }
+      if (b.totalKm !== '' && b.netKm !== '' && +b.netKm > +b.totalKm) { bad.netKm = 1; msgs.push(['warn', '순주행거리가 총주행거리보다 커요.']); }
+      if (b.income !== '' && +b.income > 800000) { bad.income = 1; msgs.push(['warn', '수입금이 ' + fmt(+b.income) + '원이에요. 0이 하나 더 들어가지 않았나요?']); }
+      if (!msgs.length && odo != null && p && b.totalKm === '') msgs.push(['info', niceDate(p.date) + '부터 ' + fmt(odo - p.odo) + 'km 늘었어요.']);
+    } else {
+      if (b.kwh !== '' && +b.kwh > 90) { bad.kwh = 1; msgs.push(['warn', fmtK(+b.kwh) + 'kWh는 평소보다 많아요. 다시 확인해 주세요.']); }
+      var had = day(s).kwh;
+      if (!msgs.length && had != null && b.kwh !== '' && +b.kwh !== had) msgs.push(['info', '이 날 이미 ' + fmtK(had) + 'kWh로 저장돼 있어요. 저장하면 바뀌어요.']);
+    }
+    return { bad: bad, msgs: msgs };
+  }
+
+  function renderPad(view) {
+    var fields = view === 'day' ? DAY_FIELDS : CHARGE_FIELDS;
+    var f = fields.filter(function (x) { return x.k === S.active[view]; })[0];
+    var keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', f.extra || '', '0', '지움'];
+    $('#' + view + 'Pad').innerHTML = keys.map(function (k) {
+      return '<button type="button" data-key="' + k + '" class="' + (k === '' ? 'blank' : (k === '지움' || k === '000' || k === '.') ? 'fn' : '') + '"' + (k === '' ? ' tabindex="-1" aria-hidden="true"' : '') + '>' + k + '</button>';
+    }).join('');
+  }
+  function press(view, k) {
+    var fields = view === 'day' ? DAY_FIELDS : CHARGE_FIELDS;
+    var f = fields.filter(function (x) { return x.k === S.active[view]; })[0], s = S.buf[f.k] || '';
+    if (k === '지움') s = s.slice(0, -1);
+    else if (k === '.') { if (s.indexOf('.') < 0) s = (s || '0') + '.'; }
+    else {
+      if (s.indexOf('.') >= 0) { if (s.length - s.indexOf('.') > 1) return; s += k; }
+      else { s = (s + k).replace(/^0+(?=\d)/, ''); if (s.length > f.max) return; }
+    }
+    S.buf[f.k] = s; S.armed = null; render();
+  }
+
+  function save(view) {
+    var fields = view === 'day' ? DAY_FIELDS : CHARGE_FIELDS, s = S.date[view];
+    var issues = check(view);
+    if (issues.msgs.some(function (m) { return m[0] === 'warn'; }) && S.armed !== view) { S.armed = view; render(); return; }
+    var d = DB.days[s] || {};
+    fields.forEach(function (f) { var v = S.buf[f.k]; d[f.k] = (v === '' || v === '.') ? null : +v; });
+    DB.days[s] = d; persist(); S.armed = null; if (view === 'day') S.scanNote = null;
+    var parts = view === 'day'
+      ? [d.income != null ? fmt(d.income) + '원' : null, d.odo != null ? '누적 ' + fmt(d.odo) + 'km' : null].filter(Boolean).join(', ')
+      : fmtK(d.kwh || 0) + 'kWh';
+    toast(niceDate(s) + ' ' + parts + ' 저장했어요');
+    // 다음 빈 칸으로
+    if (view === 'day') { var next = DAY_FIELDS.filter(function (f) { return S.buf[f.k] === ''; })[0]; if (next) S.active.day = next.k; }
+    render();
+  }
+
+  // ---------- 월별 ----------
+  function monthRows(ym) {
+    return Object.keys(DB.days).filter(function (k) {
+      var d = DB.days[k]; return k.slice(0, 7) === ym && Object.keys(d).some(function (x) { return d[x] != null; });
+    }).sort();
+  }
+  function monthSum(ym) {
+    var rows = monthRows(ym), t = { income: 0, totalKm: 0, netKm: 0, kwh: 0, odo: null, n: 0 };
+    rows.forEach(function (k) {
+      var d = DB.days[k];
+      t.income += d.income || 0; t.totalKm += d.totalKm || 0; t.netKm += d.netKm || 0; t.kwh += d.kwh || 0;
+      if (d.odo != null) t.odo = d.odo; if (d.income) t.n++;
+    });
+    t.bill = DB.bills[ym] || 0; t.net = t.income - t.bill; t.rows = rows;
+    return t;
+  }
+  function renderMonth() {
+    var ym = S.month, p = ym.split('-'), t = monthSum(ym);
+    $('#mLabel').textContent = p[0] + '년 ' + (+p[1]) + '월';
+    $('#mSub').textContent = '영업 ' + t.n + '일 기록';
+    $('#mNext').disabled = ym >= TODAY.slice(0, 7);
+    $('#tiles').innerHTML = [
+      ['g', '총수입금', fmt(t.income), '원'],
+      ['', '순수입금 (전기요금 뺀 것)', t.bill ? fmt(t.net) : '-', t.bill ? '원' : ''],
+      ['', '총주행 / 순주행', fmt(t.totalKm) + ' / ' + fmt(t.netKm), 'km'],
+      ['', '전기충전량', fmtK(t.kwh), 'kWh']
+    ].map(function (x) { return '<div class="tile ' + x[0] + '"><div class="k">' + x[1] + '</div><div class="v">' + x[2] + '<small>' + x[3] + '</small></div></div>'; }).join('');
+    if (document.activeElement !== $('#billInput')) $('#billInput').value = DB.bills[ym] || '';
+    var h = '<thead><tr><th>월 일</th><th>총수입금</th><th>총주행</th><th>순주행</th><th>충전량</th><th>누적km</th></tr></thead><tbody>', warns = 0, last = null;
+    t.rows.forEach(function (k) {
+      var d = DB.days[k], dt = parse(k), bad = d.odo != null && last != null && d.odo < last;
+      if (bad) warns++;
+      if (d.odo != null) last = d.odo;
+      h += '<tr data-date="' + k + '" class="' + (bad ? 'bad' : '') + '"><td>' + (dt.getMonth() + 1) + '월' + dt.getDate() + '일</td><td>' + (d.income != null ? fmt(d.income) : '') + '</td><td>' + (d.totalKm != null ? fmt(d.totalKm) : '') + '</td><td>' + (d.netKm != null ? fmt(d.netKm) : '') + '</td><td>' + (d.kwh != null ? fmtK(d.kwh) : '') + '</td><td class="bad">' + (d.odo != null ? fmt(d.odo) : '') + '</td></tr>';
+    });
+    if (!t.rows.length) h += '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px">이 달 기록이 아직 없어요</td></tr>';
+    h += '</tbody><tfoot><tr><td>합계</td><td>' + fmt(t.income) + '</td><td>' + fmt(t.totalKm) + '</td><td>' + fmt(t.netKm) + '</td><td>' + fmtK(t.kwh) + '</td><td>' + (t.odo != null ? fmt(t.odo) : '') + '</td></tr></tfoot>';
+    $('#mTable').innerHTML = h;
+    $('#monthWarn').innerHTML = warns ? '<div class="msg warn">누적거리가 앞날보다 작은 날이 ' + warns + '번 있어요. 빨간 숫자를 눌러 고쳐 주세요.</div>' : '';
+    $('#mTable').querySelectorAll('tbody tr[data-date]').forEach(function (tr) {
+      tr.onclick = function () { S.date.day = tr.dataset.date; loadBuf('day'); setTab('day'); };
+    });
+  }
+
+  // ---------- 엑셀: 아버님 양식 그대로 (연도 파일 · 월별 시트) ----------
+  function buildWorkbook(X, year) {
+    var wb = X.utils.book_new(), months = [];
+    for (var m = 1; m <= 12; m++) { var ym = year + '-' + pad(m); if (monthRows(ym).length) months.push(m); }
+    var FONT = { name: '맑은 고딕', sz: 11 }, YELLOW = { patternType: 'solid', fgColor: { rgb: 'FFFF00' } };
+    var thin = { style: 'thin', color: { rgb: '000000' } }, BORDER = { top: thin, bottom: thin, left: thin, right: thin };
+    function st(extra) { var s = { font: FONT, fill: YELLOW, border: BORDER, alignment: { vertical: 'center' } }; for (var k in extra) s[k] = extra[k]; return s; }
+    var NUM = '#,##0';
+    months.forEach(function (m) {
+      var ym = year + '-' + pad(m), rows = monthRows(ym), t = monthSum(ym), ws = {};
+      var put = function (ref, cell) { ws[ref] = cell; };
+      var L = function (c, r) { return 'ABCDEFGHIJ'[c] + r; };
+      put('C1', { t: 's', v: year + '년' + m + '월수입금내역서', s: st({}) });
+      ['월   일', '총수입금내역', '총주행거리', '순주행거리', '전기충전량', '총주행거리', '전기요금'].forEach(function (h, i) { put(L(i, 2), { t: 's', v: h, s: st({ alignment: { horizontal: 'center' } }) }); });
+      var r = 3;
+      rows.forEach(function (k) {
+        var d = DB.days[k], dt = parse(k);
+        put(L(0, r), { t: 's', v: m + '월' + dt.getDate() + '일', s: st({}) });
+        [['income', 1], ['totalKm', 2], ['netKm', 3], ['kwh', 4], ['odo', 5]].forEach(function (c) {
+          if (d[c[0]] != null) put(L(c[1], r), { t: 'n', v: d[c[0]], z: NUM, s: st({ numFmt: NUM }) });
+        });
+        r++;
+      });
+      var last = r - 1, s1 = r + 1, s2 = r + 2;
+      var sum = function (col) { return rows.length ? 'SUM(' + col + '3:' + col + last + ')' : '0'; };
+      put('A' + s1, { t: 's', v: '총수입금', s: st({}) });
+      put('B' + s1, { t: 'n', f: sum('B'), v: t.income, z: NUM, s: st({ numFmt: NUM }) });
+      ['총주행거리', '순주행거리', '전기충전량', '총주행거리', '전기요금'].forEach(function (h, i) { put(L(i + 2, s1), { t: 's', v: h, s: st({ alignment: { horizontal: 'center' } }) }); });
+      put('A' + s2, { t: 's', v: '순수입금', s: st({}) });
+      put('B' + s2, { t: 'n', f: 'B' + s1 + '-G' + s2, v: t.net, z: NUM, s: st({ numFmt: NUM }) });
+      put('C' + s2, { t: 'n', f: sum('C'), v: t.totalKm, z: NUM, s: st({ numFmt: NUM }) });
+      put('D' + s2, { t: 'n', f: sum('D'), v: t.netKm, z: NUM, s: st({ numFmt: NUM }) });
+      put('E' + s2, { t: 'n', f: sum('E'), v: t.kwh, z: NUM, s: st({ numFmt: NUM }) });
+      if (t.odo != null) put('F' + s2, { t: 'n', v: t.odo, z: NUM, s: st({ numFmt: NUM }) });
+      put('G' + s2, { t: 'n', v: t.bill, z: NUM, s: st({ numFmt: NUM }) });
+      var maxR = Math.max(32, s2 + 2);
+      for (var rr = 1; rr <= maxR; rr++) for (var cc = 0; cc < 10; cc++) { var ref = L(cc, rr); if (!ws[ref]) ws[ref] = { t: 's', v: '', s: st({}) }; }
+      ws['!ref'] = 'A1:J' + maxR;
+      ws['!cols'] = [{ wch: 11 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 11 }, { wch: 9 }, { wch: 9 }, { wch: 9 }];
+      X.utils.book_append_sheet(wb, ws, year + '년' + m + '월수입금내역서');
+    });
+    return wb;
+  }
+  function exportXlsx() {
+    var year = S.month.slice(0, 4);
+    var name = year + '년수입금내역서.xlsx';
+    function go() {
+      var wb = buildWorkbook(XLSX, year);
+      if (!wb.SheetNames.length) return toast(year + '년 기록이 아직 없어요.');
+      if (APP) window.Android.saveXlsx(XLSX.write(wb, { type: 'base64', bookType: 'xlsx' }), name);
+      else XLSX.writeFile(wb, name);
+    }
+    if (window.XLSX) return go();
+    var s = document.createElement('script');
+    s.src = APP ? 'xlsx.bundle.js' : 'https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js';
+    s.onload = go; s.onerror = function () { toast('엑셀 도구를 불러오지 못했어요. 인터넷 연결을 확인해 주세요.'); };
+    document.head.appendChild(s);
+  }
+
+  // ---------- 정산 영수증 읽기 ----------
+  // lines: [{t, x, y, w, h}] (ML Kit 줄 단위). 총합계 금액과 영업일(집계 시작일)을 찾는다.
+  function parseReceipt(lines, now) {
+    now = now || new Date();
+    var L = (lines || []).map(function (l) {
+      var c = String(l.t || '').replace(/\s+/g, '');
+      return { t: String(l.t || ''), c: c, x: l.x || 0, y: l.y || 0, w: l.w || 0, h: l.h || 20 };
+    });
+    function money(str) {
+      var s = str.replace(/[oO]/g, '0').replace(/[lI|]/g, '1');
+      var m = s.match(/\d{1,3}(?:[,.]\d{3})+|\d{4,7}/g);
+      if (!m) return null;
+      var v = m.map(function (x) { return +x.replace(/[,.]/g, ''); }).filter(function (x) { return x >= 1000 && x < 10000000; });
+      return v.length ? Math.max.apply(null, v) : null;
+    }
+    var amount = null;
+    var labels = L.filter(function (l) { return /[총종]합[계게]/.test(l.c); });
+    if (!labels.length) labels = L.filter(function (l) { return /합[계게]/.test(l.c) && !/[교신카우]/.test(l.c); });
+    for (var i = 0; i < labels.length && amount == null; i++) {
+      var lab = labels[i];
+      var after = lab.c.split(/합[계게]/).pop();
+      amount = money(after);
+      if (amount == null) {
+        var cy = lab.y + lab.h / 2, near = L.filter(function (l) {
+          return l !== lab && Math.abs((l.y + l.h / 2) - cy) < Math.max(lab.h, l.h) * 0.9 && l.x >= lab.x;
+        });
+        near.forEach(function (l) { var v = money(l.c); if (v != null && (amount == null || v > amount)) amount = v; });
+      }
+    }
+    var all = L.map(function (l) { return l.c; }).join('\n');
+    var year = now.getFullYear(), date = null;
+    var pm = all.match(/(20\d{2})[\/.\-](\d{1,2})[\/.\-](\d{1,2})(\d{1,2})?:?/);
+    var pr = all.match(/출력일시:?(20\d{2})[\/.\-](\d{1,2})[\/.\-](\d{1,2})(\d{1,2}):(\d{2})/);
+    if (pr) year = +pr[1]; else if (pm) year = +pm[1];
+    var jm = all.match(/집[계게]시간:?(\d{1,2})[\/.](\d{1,2})/);
+    if (jm) {
+      var mo = +jm[1], da = +jm[2], y = year;
+      if (pr && mo > +pr[2]) y = year - 1; // 12월 영업을 1월에 출력한 경우
+      if (mo >= 1 && mo <= 12 && da >= 1 && da <= 31) date = y + '-' + pad(mo) + '-' + pad(da);
+    } else if (pr) {
+      var d = new Date(+pr[1], +pr[2] - 1, +pr[3], +pr[4]);
+      if (d.getHours() < 6) d.setDate(d.getDate() - 1);
+      date = ymd(d);
+    }
+    return { amount: amount, date: date };
+  }
+  function scanUI(busy) {
+    S.scanning = busy;
+    $('#scanTitle').textContent = busy ? '영수증 읽는 중…' : '정산 영수증 찍기';
+    $('#scanSub').textContent = busy ? '잠시만 기다려 주세요.' : '총합계와 날짜를 자동으로 채워요.';
+  }
+  function onScanStart() { scanUI(true); }
+  function onScan(res) {
+    scanUI(false);
+    if (!res || res.error) {
+      if (res && res.error === 'cancel') return;
+      toast(res && res.error === 'camera' ? '카메라를 열지 못했어요.' : '글자를 읽지 못했어요. 다시 찍어 주세요.');
+      return;
+    }
+    var r = parseReceipt(res.lines, new Date());
+    if (r.amount == null) { toast('총합계를 찾지 못했어요. 영수증을 평평하게 펴고 밝은 곳에서 다시 찍거나, 숫자를 직접 눌러 주세요.'); return; }
+    if (r.date && r.date <= TODAY && r.date !== S.date.day) { S.date.day = r.date; loadBuf('day'); }
+    S.buf.income = String(r.amount);
+    S.active.day = 'odo';
+    S.scanNote = { date: S.date.day, text: '영수증에서 ' + (r.date ? niceDate(r.date) + ', ' : '') + fmt(r.amount) + '원을 읽었어요. 맞으면 나머지 칸도 채우고 저장하세요.' };
+    S.tab === 'day' ? render() : setTab('day');
+  }
+
+  // ---------- 공통 ----------
+  var tt;
+  function toast(m) { var t = $('#toast'); t.textContent = m; t.hidden = false; clearTimeout(tt); tt = setTimeout(function () { t.hidden = true; }, 2400); }
+  function setTab(tab) {
+    S.tab = tab;
+    ['day', 'charge', 'month'].forEach(function (k) { $('#view-' + k).hidden = k !== tab; });
+    document.querySelectorAll('nav.tabs button').forEach(function (b) { b.setAttribute('aria-selected', b.dataset.tab === tab ? 'true' : 'false'); });
+    if (tab === 'month') S.month = S.month || TODAY.slice(0, 7);
+    render(); window.scrollTo(0, 0);
+  }
+  function render() {
+    if (S.tab === 'day' || S.tab === 'charge') { renderDate($('#' + S.tab + 'Date'), S.tab); renderFields(S.tab); renderPad(S.tab); }
+    if (S.tab === 'month') renderMonth();
+  }
+
+  function init() {
+    load();
+    dateRow($('#dayDate'), 'day'); dateRow($('#chargeDate'), 'charge');
+    loadBuf('day');
+    ['day', 'charge'].forEach(function (v) {
+      $('#' + v + 'Pad').addEventListener('click', function (e) { var b = e.target.closest('button[data-key]'); if (b && b.dataset.key) press(v, b.dataset.key); });
+      $('#' + v + 'Save').onclick = function () { save(v); };
+    });
+    document.querySelectorAll('nav.tabs button').forEach(function (b) {
+      b.onclick = function () { if (b.dataset.tab !== 'month') loadBuf(b.dataset.tab); setTab(b.dataset.tab); };
+    });
+    $('#mPrev').onclick = function () { var d = parse(S.month + '-01'); d.setMonth(d.getMonth() - 1); S.month = ymd(d).slice(0, 7); renderMonth(); };
+    $('#mNext').onclick = function () { var d = parse(S.month + '-01'); d.setMonth(d.getMonth() + 1); S.month = ymd(d).slice(0, 7); renderMonth(); };
+    $('#billInput').oninput = function () { var v = parseInt(this.value, 10); if (v > 0) DB.bills[S.month] = v; else delete DB.bills[S.month]; persist(); renderMonth(); };
+    $('#xlsxBtn').onclick = exportXlsx;
+    if (APP) {
+      $('#modeChip').hidden = true;
+      $('#scanBtn').classList.add('live'); scanUI(false);
+      $('#scanBtn').onclick = function () { if (!S.scanning) window.Android.scanReceipt(); };
+      $('#exportHint').textContent = '다운로드 폴더에 저장되고, 카톡 등으로 바로 보낼 수 있어요.';
+    } else {
+      $('#exportHint').textContent = '미리보기 화면에서는 파일 받기가 막혀 있어요. 설치용 앱에서는 아버님 엑셀과 같은 모양(연도 파일, 월별 시트, 노란 표)으로 받아져요.';
+    }
+    render();
+  }
+  return { init: init, buildWorkbook: buildWorkbook, parseReceipt: parseReceipt, onScan: onScan, onScanStart: onScanStart, _db: function () { return DB; }, _state: S };
+})();
+Ledger.init();
+</script>
