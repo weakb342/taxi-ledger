@@ -31,7 +31,7 @@ button { cursor: pointer; }
   max-width: 520px; margin: 0 auto;
   padding-left: max(16px, env(safe-area-inset-left, 0px));
   padding-right: max(16px, env(safe-area-inset-right, 0px));
-  padding-block: 12px calc(96px + env(safe-area-inset-bottom, 0px));
+  padding-block: 12px calc(80px + env(safe-area-inset-bottom, 0px));
   display: flex; flex-direction: column; gap: 12px;
 }
 section { display: flex; flex-direction: column; gap: 12px; }
@@ -113,6 +113,38 @@ nav.tabs button svg { width: 24px; height: 24px; }
 nav.tabs button[aria-selected="true"] { color: var(--accent); }
 
 .toast { position: fixed; left: 50%; transform: translateX(-50%); z-index: 9; bottom: calc(84px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--bg); padding: 12px 18px; border-radius: 14px; font-weight: 600; max-width: calc(100% - 32px); text-align: center; }
+/* 입력 화면은 한 화면에 다 들어오게: 남는 높이는 키패드가 채우고, 모자라면 키패드가 줄어든다 */
+:root { --hdr: 0px; --tabs: calc(68px + env(safe-area-inset-bottom, 0px)); }
+body.preview { --hdr: 52px; }
+body.app header.top { display: none; }
+#view-day, #view-charge {
+  height: calc(100dvh - var(--tabs) - var(--hdr) - 24px - env(safe-area-inset-top, 0px));
+  min-height: 560px; gap: 8px;
+}
+#view-day .keypad, #view-charge .keypad { flex: 1 1 0; min-height: 184px; max-height: 300px; grid-auto-rows: 1fr; }
+#view-day .keypad button, #view-charge .keypad button { height: auto; min-height: 40px; }
+#view-day .save, #view-charge .save { flex: none; height: clamp(52px, 7.5dvh, 64px); }
+#view-day .daterow, #view-charge .daterow { flex: none; }
+#view-day .daterow button.arrow, #view-charge .daterow button.arrow { height: 48px; }
+.photo { flex: none; }
+.frow { min-height: 56px; padding: 8px 16px; }
+.big .frow { min-height: 84px; }
+.msg { flex: none; font-size: 0.85rem; padding: 7px 10px; line-height: 1.35; }
+#dayMsg:empty, #chargeMsg:empty { display: none; }
+#dayMsg, #chargeMsg { display: flex; flex-direction: column; gap: 6px; flex: none; }
+@media (max-height: 860px) {
+  .frow .lbl small, #scanSub { display: none; }
+  .frow { min-height: 50px; padding: 6px 14px; }
+  .frow .val { font-size: 1.5rem; }
+  .photo.live { min-height: 0; padding: 10px 14px; }
+  .datebox .d { font-size: 1.15rem; }
+}
+@media (max-height: 700px) {
+  .frow { min-height: 46px; }
+  .frow .lbl { font-size: 0.95rem; }
+  .keypad button { font-size: 1.4rem; }
+  .datebox .sub { display: none; }
+}
 @media (prefers-reduced-motion: no-preference) { .keypad button, .save { transition: transform .06s; } .keypad button:active, .save:active { transform: scale(0.97); } }
 </style>
 
@@ -589,6 +621,7 @@ var Ledger = (function () {
     $('#mNext').onclick = function () { var d = parse(S.month + '-01'); d.setMonth(d.getMonth() + 1); S.month = ymd(d).slice(0, 7); renderMonth(); };
     $('#billInput').oninput = function () { var v = parseInt(this.value, 10); if (v > 0) DB.bills[S.month] = v; else delete DB.bills[S.month]; persist(); renderMonth(); };
     $('#xlsxBtn').onclick = exportXlsx;
+    document.body.classList.add(APP ? 'app' : 'preview');
     if (APP) {
       $('#modeChip').hidden = true;
       $('#scanBtn').classList.add('live'); scanUI(false);
