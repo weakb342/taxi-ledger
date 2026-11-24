@@ -1,6 +1,8 @@
 package kr.taxiledger;
 
-import android.app.Activity;
+import android.Manifest;
+import android.content.pm.PackageManager;
+import android.widget.FrameLayout;
 import android.content.ContentValues;
 import android.content.Intent;
 import android.graphics.Bitmap;
@@ -21,6 +23,7 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Toast;
 
+import androidx.activity.ComponentActivity;
 import androidx.core.content.FileProvider;
 
 import com.google.mlkit.vision.common.InputImage;
@@ -42,18 +45,23 @@ import java.nio.charset.StandardCharsets;
  * 화면은 assets/index.html (웹 화면) 이 그리고,
  * 이 클래스는 폰 기능(카메라 + 글자 읽기, 엑셀 저장, 백업)만 맡습니다.
  */
-public class MainActivity extends Activity {
+public class MainActivity extends ComponentActivity implements LiveScanner.Host {
 
     private static final int REQ_CAMERA = 1;
+    private static final int REQ_CAM_PERM = 2;
     private WebView web;
+    private LiveScanner scanner;
     private Uri photoUri;
     private File photoFile;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        FrameLayout root = new FrameLayout(this);
         web = new WebView(this);
-        setContentView(web);
+        root.addView(web, new FrameLayout.LayoutParams(-1, -1));
+        setContentView(root);
+        scanner = new LiveScanner(this, root, this);
 
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
@@ -76,7 +84,8 @@ public class MainActivity extends Activity {
 
     @Override
     public void onBackPressed() {
-        if (web != null && web.canGoBack()) web.goBack();
+        if (scanner != null && scanner.isOpen()) scanner.close(false);
+        else if (web != null && web.canGoBack()) web.goBack();
         else super.onBackPressed();
     }
 
@@ -86,6 +95,41 @@ public class MainActivity extends Activity {
 
     private void toast(String msg) {
         runOnUiThread(() -> Toast.makeText(this, msg, Toast.LENGTH_LONG).show());
+    }
+
+    // ---------- 비추기만 하면 읽기 (LiveScanner) ----------
+    private void openLiveScan() {
+        if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.CAMERA}, REQ_CAM_PERM);
+            return;
+        }
+        js("Ledger.onLiveStart()");
+        scanner.open();
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int code, String[] perms, int[] results) {
+        super.onRequestPermissionsResult(code, perms, results);
+        if (code != REQ_CAM_PERM) return;
+        if (results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED) openLiveScan();
+        else toast("영수증을 읽으려면 카메라 허용이 필요해요");
+    }
+
+    @Override
+    public void sendFrame(String json, java.util.function.Consumer<String> reply) {
+        web.evaluateJavascript("Ledger.onLiveFrame(" + json + ")", v -> {
+            String r = v == null ? "" : v.replace("\"", "");
+            reply.accept(r);
+        });
+    }
+
+    @Override
+    public void onClosed(boolean success) { }
+
+    @Override
+    public void takePhotoInstead() {
+        scanner.close(false);
+        startCamera();
     }
 
     // ---------- 카메라 → 글자 읽기 ----------
@@ -179,7 +223,7 @@ public class MainActivity extends Activity {
     private class Bridge {
         @JavascriptInterface
         public void scanReceipt() {
-            runOnUiThread(MainActivity.this::startCamera);
+            runOnUiThread(MainActivity.this::openLiveScan);
         }
 
         /** 엑셀 파일을 '다운로드' 폴더에 저장하고, 카톡 등으로 보낼 수 있게 공유 창을 연다. */

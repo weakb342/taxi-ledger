@@ -559,10 +559,33 @@ var Ledger = (function () {
   }
   function scanUI(busy) {
     S.scanning = busy;
-    $('#scanTitle').textContent = busy ? '영수증 읽는 중…' : '정산 영수증 찍기';
-    $('#scanSub').textContent = busy ? '잠시만 기다려 주세요.' : '윗부분(집계 시간 ~ 총합계)이 크게 나오게 찍어 주세요.';
+    $('#scanTitle').textContent = busy ? '영수증 읽는 중…' : '정산 영수증 읽기';
+    $('#scanSub').textContent = busy ? '잠시만 기다려 주세요.' : '폰을 영수증 위에 대고 있으면 자동으로 읽어요.';
   }
   function onScanStart() { scanUI(true); }
+
+  // 비추기만 하면 읽기: 카메라 화면 한 장마다 불림. 답: ok(입력 완료) / hold / more / closer / none
+  var live = { hits: {}, last: null };
+  function onLiveStart() { live = { hits: {}, last: null }; }
+  function onLiveFrame(res) {
+    var lines = (res && res.lines) || [];
+    if (!lines.length) return 'none';
+    var r = parseReceipt(lines, new Date());
+    live.last = lines;
+    if (r.amount != null && r.verified) { done(r); return 'ok'; }
+    if (r.amount != null && r.how === 'label') {
+      var k = 'L' + r.amount; live.hits[k] = (live.hits[k] || 0) + 1;
+      if (live.hits[k] >= 2) { done(r); return 'ok'; }   // 같은 총합계를 두 번 연속 읽으면 확정
+      return 'hold';
+    }
+    var all = lines.map(function (l) { return String(l.t || ''); }).join(' ');
+    if (/집\s*[계게]|상세|교통|신용|카카오|우버|총\s*합/.test(all)) return 'more';
+    return 'closer';
+    function done(r) {
+      S.scanDebug = { date: S.date.day, lines: lines.map(function (l) { return l.t; }), size: '카메라', ok: true };
+      applyScan(r);
+    }
+  }
   function onScan(res) {
     scanUI(false);
     if (!res || res.error) {
@@ -579,6 +602,9 @@ var Ledger = (function () {
       return;
     }
     S.scanDebug = { date: S.date.day, lines: (res.lines || []).map(function (l) { return l.t; }), size: (res.w || '?') + '×' + (res.h || '?'), ok: true };
+    applyScan(r);
+  }
+  function applyScan(r) {
     if (r.date && r.date <= TODAY && r.date !== S.date.day) { S.date.day = r.date; loadBuf('day'); }
     S.buf.income = String(r.amount);
     S.active.day = 'odo';
@@ -632,7 +658,7 @@ var Ledger = (function () {
     }
     render();
   }
-  return { init: init, buildWorkbook: buildWorkbook, parseReceipt: parseReceipt, onScan: onScan, onScanStart: onScanStart, _db: function () { return DB; }, _state: S };
+  return { init: init, buildWorkbook: buildWorkbook, parseReceipt: parseReceipt, onScan: onScan, onScanStart: onScanStart, onLiveStart: onLiveStart, onLiveFrame: onLiveFrame, _db: function () { return DB; }, _state: S };
 })();
 Ledger.init();
 </script>
